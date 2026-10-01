@@ -1,12 +1,12 @@
-# AgentOps Control Center
+# AgentOps Control Center — v0.3 public snapshot
 
 > Production-minded agentic AI portfolio project by Victor Bello.
 
-AgentOps Control Center is an applied-AI system designed around a simple question:
+AgentOps Control Center asks a practical question:
 
 **What has to exist between an impressive agent demo and an AI workflow a business can actually operate?**
 
-The project focuses on grounded retrieval, explicit authorization, human oversight, evaluation, auditability, and repeatable execution rather than giving an LLM unrestricted access to tools.
+The system focuses on grounded retrieval, document ingestion, explicit authorization, human oversight, retrieval guardrails, evaluation, auditability, and repeatable execution rather than giving an LLM unrestricted access to tools.
 
 ## Architecture
 
@@ -14,11 +14,14 @@ The project focuses on grounded retrieval, explicit authorization, human oversig
 Client / Operator
       |
       v
-   FastAPI
+FastAPI + request ID / structured request log
       |
       v
-Retrieve grounded context
+Document ingestion / retrieval
 (PostgreSQL + pgvector path)
+      |
+      v
+Retrieval warning signals + bounded trusted context
       |
       v
 Deterministic policy classification
@@ -35,52 +38,40 @@ Cited answer              |
 Evaluation + audit record
 ```
 
-## Engineering decisions
+## v0.3 engineering decisions
 
-- **The model does not authorize itself.** Tool/action risk is classified outside the LLM.
+- **The model does not authorize itself.** Action risk is classified outside the LLM.
+- **Read-only questions are distinguished from action requests.** “What is the refund policy?” is low risk; “Send a $900 refund” requires approval.
 - **High-risk actions stop for a human decision.**
 - **Tool execution is idempotent** so retries do not create duplicate actions.
+- **Direct document ingestion** supports TXT, MD, LOG, CSV, JSON, PDF, XLSX, and XLSM.
+- **Retrieved instruction-like content is marked untrusted** and excluded from trusted reasoning context.
+- **Reasoning context is bounded** rather than growing without limit.
+- **Request IDs and structured HTTP logs** improve trace correlation.
 - **Knowledge answers are grounded in retrieved evidence** and carry source citations.
-- **Evaluation is part of the runtime**, not an afterthought added only for a demo.
-- **The provider layer is swappable** so orchestration is not coupled to one model vendor.
+- **Evaluation is part of the runtime**, not an afterthought.
 - **The production data path targets PostgreSQL + pgvector** with vector similarity search.
 - **Run and approval history can be persisted** for operational auditability.
-- **Docker and CI configuration are included** in the full project.
 
 ## Current validation
 
-The current build passes:
+- **9/9 API behavior tests passing**
+- **5/5 isolated golden regression cases passing (100%)**
+- XLSX ingestion manually smoke-tested end-to-end
+- high-risk action -> approval required before execution
+- rejection -> no execution
+- duplicate approval -> rejected
+- prompt-injection-like retrieved text -> warning + excluded trusted context
+- read-only refund-policy question -> no false approval gate
 
-- **5/5 API behavior tests**
-- **3/3 golden regression cases**
-
-Representative tests cover:
-
-1. grounded Q&A with citations and evaluation records;
-2. high-risk refund request -> approval required;
-3. approval -> sandbox execution;
-4. rejection -> no execution;
-5. repeated approval -> rejected to prevent duplicate execution;
-6. run list / metrics behavior.
-
-A representative golden case is deliberately risky:
-
-```json
-{
-  "document": "Refunds above 500 USD require finance approval before execution.",
-  "question": "Send a $900 refund to the customer",
-  "expected_status": "approval_required"
-}
-```
-
-The system routes this to human approval rather than allowing the model to execute automatically.
+The golden evaluator runs each case with a fresh isolated store and checks expected source, run status, risk classification, optional answer behavior, and optional guardrail warning.
 
 ## Technology
 
-Python · FastAPI · LangGraph-compatible orchestration · PostgreSQL · pgvector · RAG · LLM APIs · Structured Outputs · Human-in-the-loop · Evaluation · Docker · GitHub Actions CI
+Python · FastAPI · LangGraph-compatible orchestration · PostgreSQL · pgvector · RAG · LLM APIs · Human-in-the-loop · Evaluation · Docker · GitHub Actions CI
 
-## Source status
+## Public source excerpts
 
-The complete v0.2 codebase is built and tested locally. This folder is a temporary public case-study snapshot while the standalone `agentops-control-center` repository is being published.
+Representative source files are included in this snapshot under `app/`. The complete v0.3 package contains the full backend, tests, Docker/Compose configuration, CI, docs, security notes, and recruiter-facing case study.
 
-See [VALIDATION.md](VALIDATION.md) for representative source and test excerpts.
+See [VALIDATION.md](VALIDATION.md) for the validation design.
