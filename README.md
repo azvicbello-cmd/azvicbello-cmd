@@ -27,7 +27,7 @@ A production-style agent platform designed around **grounded RAG, policy-control
 - Docker configuration and CI test workflow
 - Security/threat-model documentation
 
-**Current validation:** API behavior and representative golden cases are covered by automated tests. Public repository and live demo publishing are in progress.
+**Current validation:** API behavior and representative golden cases are covered by automated tests. [View the public AgentOps case-study snapshot →](https://github.com/azvicbello-cmd/azvicbello-cmd/tree/main/projects/agentops-control-center)
 
 ---
 
