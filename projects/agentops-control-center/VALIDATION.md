@@ -1,86 +1,54 @@
-# AgentOps Control Center — Validation & Source Excerpts
+# AgentOps Control Center — v0.3 Validation
 
-This page exposes representative implementation details from the tested v0.2 build.
+The current local v0.3 build is validated against both API behavior and an isolated golden regression set.
+
+## Checkpoint
+
+- API suite: **9/9 passing**
+- Golden regression set: **5/5 passing (100%)**
+- XLSX ingestion: **end-to-end smoke test passed**
+
+## What the API suite covers
+
+1. health/runtime configuration;
+2. grounded query with citations, eval breakdown, and audit events;
+3. high-risk action -> human approval -> sandbox execution;
+4. rejection -> no tool execution;
+5. metrics and run listing;
+6. direct text-file upload plus request-ID propagation;
+7. CSV upload + retrieval;
+8. prompt-injection-like retrieved content is flagged and excluded from trusted answer context;
+9. “What is the refund policy?” remains read-only instead of triggering an approval false positive.
+
+## Stronger golden regression design
+
+Every case gets a **fresh vector store and service instance**. That prevents an earlier document from accidentally making a later case pass.
+
+The runner can assert:
+
+- expected source;
+- expected run status;
+- expected risk level;
+- optional answer substring;
+- optional retrieval warning.
+
+Current cases cover Priority-1 incident knowledge, a consequential refund action, security-key rotation, a read-only refund-policy question, and untrusted retrieved instructions.
 
 ## Authorization is outside the model
 
 ```python
 def _route_after_plan(self, state):
     return "approval" if state.get("risk") == RiskLevel.high else "answer"
-
-def _approval_gate(self, state):
-    record = self.approvals.create(
-        run_id=state["run_id"],
-        action=state.get("action") or "unknown_action",
-        risk=state.get("risk", RiskLevel.high),
-        reason=state.get("reason", "External side effect"),
-    )
-    return {
-        "approval_id": record.id,
-        "status": RunStatus.approval_required,
-        "answer": "The proposed external action is blocked until a human explicitly approves it.",
-    }
 ```
 
-The LLM can help reason about a request, but it does not grant itself permission to perform a consequential action.
+The LLM can reason about evidence, but it does not grant itself permission to perform a consequential action.
 
-## Idempotent sandbox execution
+## Guardrail boundary
 
-```python
-def execute(self, run_id: str, action: str):
-    key = hashlib.sha256(f"{run_id}:{action}".encode("utf-8")).hexdigest()[:24]
-    if key in self._executions:
-        return self._executions[key]
+Retrieved text that resembles an instruction to override policy or expose secrets receives warning metadata. The reasoner excludes warned citations from its trusted evidence context.
 
-    result = ToolExecutionResult(
-        action=action,
-        status="simulated_success",
-        idempotency_key=key,
-        message="Human approval accepted. Sandbox execution recorded.",
-    )
-    self._executions[key] = result
-    return result
-```
+This is deliberately described as **defense-in-depth**, not as a claim that prompt injection is solved.
 
-## Evaluation is a runtime concern
+## Honest limitations
 
-The current evaluation record combines groundedness, citation coverage, and retrieval confidence. The goal is not to pretend a small heuristic is a universal AI-quality score; it is to make evaluation explicit, inspectable, and replaceable by stronger task-specific evals.
-
-```python
-overall = (
-    groundedness * 0.5
-    + citation_coverage * 0.3
-    + retrieval_confidence * 0.2
-)
-```
-
-## Representative API test
-
-```python
-def test_high_risk_action_requires_human_approval_then_sandbox_execution(client):
-    response = client.post(
-        "/query",
-        json={"question": "Send a $900 refund to the customer"},
-    )
-    body = response.json()
-
-    assert body["status"] == "approval_required"
-    assert body["risk"] == "high"
-    assert body["approval_id"]
-
-    approved = client.post(f"/approvals/{body['approval_id']}/approve")
-    assert approved.status_code == 200
-    assert approved.json()["tool_execution"]["status"] == "simulated_success"
-
-    duplicate = client.post(f"/approvals/{body['approval_id']}/approve")
-    assert duplicate.status_code == 409
-```
-
-## Test checkpoint
-
-- API suite: **5/5 passing**
-- Golden regression set: **3/3 passing**
-
-## Full-build components
-
-The local full build additionally contains FastAPI endpoints, deterministic/provider-backed reasoning interfaces, embedding interfaces, retrieval abstraction, PostgreSQL stores, pgvector search, audit persistence, Docker/Compose configuration, CI, security notes, threat model, evaluation documentation, and a recruiter-facing case study.
+The project does not claim production SSO/RBAC, tenant isolation, managed secrets, real payment/email connectors, full semantic prompt-injection defense, an OpenTelemetry exporter, or OCR for scanned PDFs.
