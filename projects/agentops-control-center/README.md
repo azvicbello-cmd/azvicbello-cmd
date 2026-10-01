@@ -1,77 +1,88 @@
-# AgentOps Control Center — v0.3 public snapshot
+# AgentOps Control Center
 
-> Production-minded agentic AI portfolio project by Victor Bello.
+**Production-minded agentic AI portfolio system for grounded retrieval, policy-controlled actions, human approval, evaluation, guardrails, and auditability.**
 
-AgentOps Control Center asks a practical question:
+AgentOps Control Center is deliberately built around the gap between a compelling AI demo and a system an operations team could responsibly run. It treats retrieval quality, permissions, prompt injection, retries, audit state, evaluation, and failure modes as first-class engineering concerns.
 
-**What has to exist between an impressive agent demo and an AI workflow a business can actually operate?**
+## Current validation - v0.3
 
-The system focuses on grounded retrieval, document ingestion, explicit authorization, human oversight, retrieval guardrails, evaluation, auditability, and repeatable execution rather than giving an LLM unrestricted access to tools.
+- **9/9 API and behavior tests passing**
+- **5/5 isolated golden regression cases passing (100%)**
+- Covered behavior includes grounded Q&A, read-only vs action intent, high-risk approval, rejection with no execution, duplicate-approval prevention, direct prompt-injection blocking, indirect prompt-injection filtering, upload ingestion, request IDs, and runtime metrics.
+
+## Why this project exists
+
+Many agent demos let the model retrieve data and call tools, then stop at "it works." AgentOps asks harder questions:
+
+- What evidence was used, and can the answer be traced back to it?
+- Can an LLM accidentally authorize its own consequential action?
+- What happens when retrieved content contains malicious instructions?
+- Can a repeated approval or retry cause a duplicate side effect?
+- Can behavior be measured with regression cases instead of a good-looking demo?
+- Can an operator inspect what happened after the fact?
 
 ## Architecture
 
 ```text
-Client / Operator
-      |
-      v
-FastAPI + request ID / structured request log
-      |
-      v
-Document ingestion / retrieval
-(PostgreSQL + pgvector path)
-      |
-      v
-Retrieval warning signals + bounded trusted context
-      |
-      v
-Deterministic policy classification
-      |
-      +-------------------+
-      | read / low risk   | high-risk action
-      v                   v
-LLM/provider reasoning   Human approval gate
-      |                   |
-      v                   +--> reject -> no side effect
-Cited answer              |
-      |                   +--> approve -> idempotent tool adapter
-      v
-Evaluation + audit record
+Client
+  |
+FastAPI + request ID
+  |
+Input guardrails  ---> blocked requests stop + audit
+  |
+Hybrid retrieval (vector candidates + lexical rerank)
+  |
+Evidence guard (filter indirect prompt injection)
+  |
+Deterministic risk policy
+  |                         |
+read-only / low             high-risk side effect
+  |                         |
+LLM / reasoner              Human approval
+  |                         | reject -> no execution
+  |                         | approve
+  |                         v
+  |                    Idempotent tool boundary
+  +-------------+-----------+
+                |
+          Eval + audit state
 ```
 
-## v0.3 engineering decisions
+## Engineering decisions
 
-- **The model does not authorize itself.** Action risk is classified outside the LLM.
-- **Read-only questions are distinguished from action requests.** “What is the refund policy?” is low risk; “Send a $900 refund” requires approval.
-- **High-risk actions stop for a human decision.**
-- **Tool execution is idempotent** so retries do not create duplicate actions.
-- **Direct document ingestion** supports TXT, MD, LOG, CSV, JSON, PDF, XLSX, and XLSM.
-- **Retrieved instruction-like content is marked untrusted** and excluded from trusted reasoning context.
-- **Reasoning context is bounded** rather than growing without limit.
-- **Request IDs and structured HTTP logs** improve trace correlation.
-- **Knowledge answers are grounded in retrieved evidence** and carry source citations.
-- **Evaluation is part of the runtime**, not an afterthought.
-- **The production data path targets PostgreSQL + pgvector** with vector similarity search.
-- **Run and approval history can be persisted** for operational auditability.
+### Authorization is outside the model
+The reasoner can propose or explain. It cannot grant itself permission. High-risk actions stop at a deterministic policy layer and explicit human approval.
 
-## Current validation
+### Knowledge questions are not actions
+A regression case protects a subtle failure mode: **"What is the refund policy?"** remains read-only even though it contains the word "refund." **"Send a $900 refund"** is a high-risk action.
 
-- **9/9 API behavior tests passing**
-- **5/5 isolated golden regression cases passing (100%)**
-- XLSX ingestion manually smoke-tested end-to-end
-- high-risk action -> approval required before execution
-- rejection -> no execution
-- duplicate approval -> rejected
-- prompt-injection-like retrieved text -> warning + excluded trusted context
-- read-only refund-policy question -> no false approval gate
+### Retrieved documents are untrusted
+RAG content can contain hostile instructions. Suspicious evidence chunks are filtered before reasoning and recorded as guardrail events.
 
-The golden evaluator runs each case with a fresh isolated store and checks expected source, run status, risk classification, optional answer behavior, and optional guardrail warning.
+### Retrieval is hybrid
+The retriever pulls a wider vector candidate set and combines vector similarity with lexical overlap before selecting final evidence.
 
-## Technology
+### Evals are a release gate
+Every golden case runs with fresh state so an earlier document cannot accidentally make a later case pass.
 
-Python · FastAPI · LangGraph-compatible orchestration · PostgreSQL · pgvector · RAG · LLM APIs · Human-in-the-loop · Evaluation · Docker · GitHub Actions CI
+## Stack
 
-## Public source excerpts
+Python · FastAPI · LangGraph-compatible orchestration · PostgreSQL · pgvector · HNSW cosine search · hybrid RAG · OpenAI provider adapter · human-in-the-loop · evals · Docker · CI/CD concepts
 
-Representative source files are included in this snapshot under `app/`. The complete v0.3 package contains the full backend, tests, Docker/Compose configuration, CI, docs, security notes, and recruiter-facing case study.
+## Public source snapshot
 
-See [VALIDATION.md](VALIDATION.md) for the validation design.
+- [Core implementation excerpts](CORE_IMPLEMENTATION.md)
+- [Validation and failure modes](VALIDATION.md)
+- [Guardrails](app/guardrails.py)
+- [Action policy](app/tools.py)
+- [API tests](tests/test_api.py)
+- [Golden eval dataset](evals/golden.jsonl)
+- [Case study](CASE_STUDY.md)
+
+The complete v0.3 source bundle is being prepared for a standalone repository. This snapshot exposes the engineering decisions and tested behavior now rather than waiting for the repo migration.
+
+## What this project does not claim
+
+This is a portfolio engineering system, not a claim of live enterprise adoption. The public tool executor is intentionally sandboxed. Production deployment would still need organization-specific identity/RBAC, document ACLs, managed secrets, rate limiting, monitoring/alerting, retention policy, and tool-specific authorization scopes.
+
+Built by **Victor Bello** - Applied AI / Forward-Deployed AI portfolio work.
