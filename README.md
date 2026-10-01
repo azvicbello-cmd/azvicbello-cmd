@@ -10,24 +10,28 @@ My work focuses on the layer between a promising AI demo and something a busines
 
 ## Current Flagship — AgentOps Control Center
 
-A production-style agent platform designed around **grounded RAG, policy-controlled tool use, human approval, evaluation, and operational auditability**.
+A production-style agent platform designed around **grounded RAG, policy-controlled tool use, human approval, evaluation, retrieval guardrails, and operational auditability**.
 
 ### What it demonstrates
 
 - Python + FastAPI service architecture
 - LangGraph-compatible agent orchestration
 - PostgreSQL + pgvector retrieval path
+- TXT/MD/LOG/CSV/JSON/PDF/XLSX/XLSM ingestion
 - Source-grounded responses and citation handling
+- Retrieval warnings for prompt-injection-like instructions
+- Bounded trusted context
 - Provider-swappable LLM and embedding interfaces
 - Deterministic risk policy outside the model
 - Human-in-the-loop approval / rejection flow
 - Idempotent tool execution
 - Persistent run and approval history
-- Evaluation records and golden regression cases
+- Request-ID propagation and structured HTTP logs
+- Evaluation records and isolated golden regression cases
 - Docker configuration and CI test workflow
 - Security/threat-model documentation
 
-**Current validation:** API behavior and representative golden cases are covered by automated tests. [View the public AgentOps case-study snapshot →](https://github.com/azvicbello-cmd/azvicbello-cmd/tree/main/projects/agentops-control-center)
+**Current validation: 9/9 API tests and 5/5 isolated golden cases passing.** [View the public AgentOps case-study snapshot →](https://github.com/azvicbello-cmd/azvicbello-cmd/tree/main/projects/agentops-control-center)
 
 ---
 
