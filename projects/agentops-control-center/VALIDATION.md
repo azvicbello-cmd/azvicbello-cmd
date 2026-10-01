@@ -1,54 +1,46 @@
-# AgentOps Control Center — v0.3 Validation
+# Validation - AgentOps Control Center v0.3
 
-The current local v0.3 build is validated against both API behavior and an isolated golden regression set.
+## Release gate
 
-## Checkpoint
+**API / behavior tests:** 9/9 passing  
+**Golden regression cases:** 5/5 passing (100%)
 
-- API suite: **9/9 passing**
-- Golden regression set: **5/5 passing (100%)**
-- XLSX ingestion: **end-to-end smoke test passed**
+The golden runner creates a fresh service and vector store for every case. This prevents cross-case evidence contamination from making an evaluation pass accidentally.
 
-## What the API suite covers
+## Cases currently protected
 
-1. health/runtime configuration;
-2. grounded query with citations, eval breakdown, and audit events;
-3. high-risk action -> human approval -> sandbox execution;
-4. rejection -> no tool execution;
-5. metrics and run listing;
-6. direct text-file upload plus request-ID propagation;
-7. CSV upload + retrieval;
-8. prompt-injection-like retrieved content is flagged and excluded from trusted answer context;
-9. “What is the refund policy?” remains read-only instead of triggering an approval false positive.
+| Case | Expected behavior |
+| --- | --- |
+| Priority-1 incident question | completed, low risk, expected source |
+| "What is the refund policy?" | completed, low risk, no approval |
+| "Send a $900 refund..." | high risk, approval required |
+| API-key rotation question | grounded answer with expected source |
+| malicious retrieved instruction | unsafe evidence filtered before reasoning |
 
-## Stronger golden regression design
+## Behavior tests also verify
 
-Every case gets a **fresh vector store and service instance**. That prevents an earlier document from accidentally making a later case pass.
+- source citations and eval breakdown are returned;
+- audit events record retrieval, policy and evaluation stages;
+- human approval reaches only the sandbox tool boundary;
+- human rejection executes nothing;
+- the same approval cannot execute twice;
+- direct prompt-injection attempts are blocked before retrieval;
+- text/Markdown file ingestion works;
+- caller-supplied request IDs are returned for trace correlation;
+- runtime metrics expose status counts and p95 latency.
 
-The runner can assert:
+## Bug found by the suite
 
-- expected source;
-- expected run status;
-- expected risk level;
-- optional answer substring;
-- optional retrieval warning.
+An early classifier treated the noun "refund" as if it always meant "perform a refund." The query:
 
-Current cases cover Priority-1 incident knowledge, a consequential refund action, security-key rotation, a read-only refund-policy question, and untrusted retrieved instructions.
+> What is the refund policy?
 
-## Authorization is outside the model
+was incorrectly escalated.
 
-```python
-def _route_after_plan(self, state):
-    return "approval" if state.get("risk") == RiskLevel.high else "answer"
-```
+The policy layer was redesigned around action patterns plus read-only/interrogative precedence, and the failure became a permanent golden regression case.
 
-The LLM can reason about evidence, but it does not grant itself permission to perform a consequential action.
+## Retrieval failure found by the suite
 
-## Guardrail boundary
+After fixing action intent, the first v0.3 golden run exposed a second issue: the lexical fallback did not normalize **refund** vs **refunds**. Instead of lowering the evaluation threshold, the retriever was fixed with lightweight term normalization and the full suite was rerun.
 
-Retrieved text that resembles an instruction to override policy or expose secrets receives warning metadata. The reasoner excludes warned citations from its trusted evidence context.
-
-This is deliberately described as **defense-in-depth**, not as a claim that prompt injection is solved.
-
-## Honest limitations
-
-The project does not claim production SSO/RBAC, tenant isolation, managed secrets, real payment/email connectors, full semantic prompt-injection defense, an OpenTelemetry exporter, or OCR for scanned PDFs.
+That sequence is intentional: the tests are a release gate, not a marketing number.
